@@ -1,0 +1,95 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'listen'
+require 'yaml'
+require 'fileutils'
+
+if ARGV.length != 3
+  abort "Usage: #$0 <from_dir> <to_dir> <rules_file>"
+end
+
+from_dir, to_dir, rules_file = ARGV
+
+class RulesHandler
+  def initialize(from_dir, to_dir, rules)
+    @from_dir = File.expand_path(from_dir)
+    @to_dir   = File.expand_path(to_dir)
+    @rules    = rules
+
+    @from_dir_regex = /^#{Regexp.escape(@from_dir)}\//
+  end
+
+  def check(path)
+    path = File.expand_path(path)
+
+    path_clean = path.sub(@from_dir_regex, "")
+
+    if File.file?(path)
+      self.added(path, path_clean)
+    else
+      self.removed(path, path_clean)
+    end
+  end
+
+  def added(path, path_clean)
+    @rules.each do |rule|
+      if File.fnmatch?(rule[0], path_clean)
+        dest = File.join(@to_dir, rule[1])
+        FileUtils.mkdir_p(dest)
+
+        dest_file = File.join(dest, File.basename(path_clean))
+
+        begin
+          File.lstat(dest_file)
+        rescue
+          FileUtils.ln_s(path, dest_file, verbose: true)
+        end
+      end
+    end
+  end
+
+  def removed(path, path_clean)
+    # Do nothing for now
+  end
+end
+
+[:INT, :TERM].each do |signal|
+  trap signal do
+    exit
+  end
+end
+
+# Poll for changes in the rules file
+loop do
+  mtime = File.new(rules_file).mtime
+  last_mtime = mtime
+
+  rules_conf = File.open(rules_file) { |f| YAML.load(f) }
+
+  handler = RulesHandler.new(from_dir, to_dir, rules_conf["rules"])
+
+  listener = Listen.to(from_dir) do |modified, added, removed|
+    (added + removed).each do |file|
+      handler.check(file)
+    end
+  end
+
+  (rules_conf["ignore"] || []).each do |ignore|
+    listener.ignore Regexp.new(ignore)
+  end
+
+  # Preliminary check
+  Dir["#{from_dir}/*"].each do |entry|
+    handler.check(entry)
+  end
+
+  listener.start
+
+  while last_mtime == mtime
+    sleep 2
+    last_mtime = File.new(rules_file).mtime
+  end
+
+  handler.stop
+end
