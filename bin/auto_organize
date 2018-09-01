@@ -25,7 +25,7 @@ class RulesHandler
 
     path_clean = path.sub(@from_dir_regex, "")
 
-    if File.file?(path)
+    if File.exist?(path)
       self.added(path, path_clean)
     else
       self.removed(path, path_clean)
@@ -75,12 +75,15 @@ loop do
     end
   end
 
-  (rules_conf["ignore"] || []).each do |ignore|
-    listener.ignore Regexp.new(ignore)
+  ignore = (rules_conf["ignore"] || []).map { |pattern| Regexp.new(pattern) }
+
+  ignore.each do |regex|
+    listener.ignore(regex)
   end
 
   # Preliminary check
   Dir["#{from_dir}/*"].each do |entry|
+    next if ignore.any? { |pat| entry.match(pat) }
     handler.check(entry)
   end
 
