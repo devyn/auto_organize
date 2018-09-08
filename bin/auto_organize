@@ -81,12 +81,16 @@ loop do
     listener.ignore(regex)
   end
 
-  # Preliminary check
+  warn "# Preliminary check"
   Dir["#{from_dir}/*"].each do |entry|
-    next if ignore.any? { |pat| entry.match(pat) }
+    if ignore.any? { |pat| entry.sub("#{from_dir}/", "").match(pat) }
+      warn "# Skipping #{entry}"
+      next
+    end
     handler.check(entry)
   end
 
+  warn "# Listening for changes"
   listener.start
 
   while last_mtime == mtime
