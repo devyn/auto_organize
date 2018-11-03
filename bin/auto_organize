@@ -70,7 +70,7 @@ loop do
   handler = RulesHandler.new(from_dir, to_dir, rules_conf["rules"])
 
   listener = Listen.to(from_dir) do |modified, added, removed|
-    (added + removed).each do |file|
+    (modified + added + removed).each do |file|
       handler.check(file)
     end
   end
